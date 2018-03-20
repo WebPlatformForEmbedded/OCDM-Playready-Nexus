@@ -56,96 +56,95 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
     // 4 byte size of PSSH data, exclusive. (N)
     // N byte PSSH data.
     while (!input.IsEOF()) {
-      size_t startPosition = input.pos();
+        size_t startPosition = input.pos();
 
-      // The atom size, used for skipping.
-      uint64_t atomSize;
+        // The atom size, used for skipping.
+        uint64_t atomSize;
 
-      if (!input.Read4Into8(&atomSize)) {
-        return false;
-      }
-
-      std::vector<uint8_t> atomType;
-      if (!input.ReadVec(&atomType, 4)) {
-          return false;
-      }
-
-      if (atomSize == 1) {
-          if (!input.Read8(&atomSize)) {
-              return false;
-          }
-      } else if (atomSize == 0) {
-        atomSize = input.size() - startPosition;
-      }
-
-      if (memcmp(&atomType[0], "pssh", 4)) {
-          if (!input.SkipBytes(atomSize - (input.pos() - startPosition))) {
+        if (!input.Read4Into8(&atomSize)) {
             return false;
-          }
-          continue;
-      }
-
-      uint8_t version;
-      if (!input.Read1(&version)) {
-          return false;
-      }
-
-
-      if (version > 1) {
-        // unrecognized version - skip.
-        if (!input.SkipBytes(atomSize - (input.pos() - startPosition))) {
-          return false;
-        }
-        continue;
-      }
-
-      // flags
-      if (!input.SkipBytes(3)) {
-        return false;
-      }
-
-      // system id
-      std::vector<uint8_t> systemId;
-      if (!input.ReadVec(&systemId, sizeof(playreadySystemId))) {
-        return false;
-      }
-
-      if (memcmp(&systemId[0], playreadySystemId, sizeof(playreadySystemId))) {
-        // skip non-Playready PSSH boxes.
-        if (!input.SkipBytes(atomSize - (input.pos() - startPosition))) {
-          return false;
-        }
-        continue;
-      }
-
-      if (version == 1) {
-        // v1 has additional fields for key IDs.  We can skip them.
-        uint32_t numKeyIds;
-        if (!input.Read4(&numKeyIds)) {
-          return false;
         }
 
-        if (!input.SkipBytes(numKeyIds * 16)) {
-          return false;
+        std::vector<uint8_t> atomType;
+        if (!input.ReadVec(&atomType, 4)) {
+            return false;
         }
-      }
 
-      // size of PSSH data
-      uint32_t dataLength;
-      if (!input.Read4(&dataLength)) {
-        return false;
-      }
+        if (atomSize == 1) {
+            if (!input.Read8(&atomSize)) {
+                return false;
+            }
+        } else if (atomSize == 0) {
+            atomSize = input.size() - startPosition;
+        }
 
-      output->clear();
-      if (!input.ReadString(output, dataLength)) {
-        return false;
-      }
+        if (memcmp(&atomType[0], "pssh", 4)) {
+            if (!input.SkipBytes(atomSize - (input.pos() - startPosition))) {
+                return false;
+            }
+            continue;
+        }
 
-      return true;
-  }
+        uint8_t version;
+        if (!input.Read1(&version)) {
+            return false;
+        }
 
-  // we did not find a matching record
-  return false;
+        if (version > 1) {
+            // unrecognized version - skip.
+            if (!input.SkipBytes(atomSize - (input.pos() - startPosition))) {
+                return false;
+            }
+            continue;
+        }
+
+        // flags
+        if (!input.SkipBytes(3)) {
+            return false;
+        }
+
+        // system id
+        std::vector<uint8_t> systemId;
+        if (!input.ReadVec(&systemId, sizeof(playreadySystemId))) {
+            return false;
+        }
+
+        if (memcmp(&systemId[0], playreadySystemId, sizeof(playreadySystemId))) {
+            // skip non-Playready PSSH boxes.
+            if (!input.SkipBytes(atomSize - (input.pos() - startPosition))) {
+                return false;
+            }
+            continue;
+        }
+
+        if (version == 1) {
+            // v1 has additional fields for key IDs.  We can skip them.
+            uint32_t numKeyIds;
+            if (!input.Read4(&numKeyIds)) {
+                return false;
+            }
+
+            if (!input.SkipBytes(numKeyIds * 16)) {
+                return false;
+            }
+        }
+
+        // size of PSSH data
+        uint32_t dataLength;
+        if (!input.Read4(&dataLength)) {
+            return false;
+        }
+
+        output->clear();
+        if (!input.ReadString(output, dataLength)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    // we did not find a matching record
+    return false;
 }
 
 MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData)
@@ -154,70 +153,57 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
         , m_oDecryptContextKey()
         , m_DecryptBufferSize(100000)
         , m_DecryptBuffer(nullptr)
-        , m_eKeyState(KEY_INIT)
+        , m_eKeyState(KEY_ERROR)
         , m_fCommit(false)
         , m_piCallback(nullptr)
         , _decoderLock() {
 
+    DRM_Prdy_Init_t settings;
+
     std::string initData(reinterpret_cast<const char *>(f_pbInitData), f_cbInitData);
     std::string playreadyInitData;
-    DRM_Prdy_Error_e dr = DRM_Prdy_fail;
-    DRM_Prdy_Init_t settings;
+
     m_oDecryptContext.pKeyContext = &m_oDecryptContextKey;
 
     DRM_Prdy_GetDefaultParamSettings(&settings);
     settings.hdsFileName = reinterpret_cast<char *>(::strdup("/tmp/wpe.hds"));
 
-    uint8_t sessionID[SESSION_ID_SIZE];
-    if (!generateSessionId(sessionID)) {
-        printf("Session ID generation failed\n");
-        m_eKeyState = KEY_ERROR;
-    } else {
+    m_rgchSessionID = new char[SESSION_ID_SIZE + 1]();
 
-        uint32_t B64SessionIDSize = DRM_Prdy_Cch_Base64_Equiv( SESSION_ID_SIZE );
-        uint16_t B64SessionID[B64SessionIDSize];
-        if(B64SessionID != NULL) {
+    printf("Constructing PlayReady Session [%p]\n", this);
 
-            dr = DRM_Prdy_B64_EncodeW(sessionID,
-                                      SESSION_ID_SIZE,
-                                      B64SessionID,
-                                      &B64SessionIDSize);
-            if (dr != DRM_Prdy_ok) {
-                printf("CXDrm::SetEnhancedData DRM_Prdy_B64_EncodeW failed = 0x%x\n", dr);
-            }
-            m_rgchSessionID = new char[SESSION_ID_SIZE];
-            ::memcpy(m_rgchSessionID, reinterpret_cast<char *>(B64SessionID), SESSION_ID_SIZE * sizeof(char));
-            printf("Session ID generated %s\n", m_rgchSessionID);
-        }
+    if (generateSessionId()) {
 
         m_prdyHandle = DRM_Prdy_Initialize(&settings);
-        if (m_prdyHandle == nullptr) {
-            m_eKeyState = KEY_ERROR;
-            printf("Playready initialization failed\n");
-        } else {
+        if (m_prdyHandle != nullptr) {
+
             int rc = NEXUS_Memory_Allocate(m_DecryptBufferSize, nullptr, reinterpret_cast<void **>(&m_DecryptBuffer));
-            if (rc != 0) {
-                m_eKeyState = KEY_ERROR;
-                printf("Playready initialization failed: NEXUS_Memory_Allocate\n");
-            } else {
-                printf("Playready initialized \n");
+            if (rc == 0) {
 
-                if (!parsePlayreadyInitializationData(initData, &playreadyInitData)) {
-                    playreadyInitData = initData;
+                if (parsePlayreadyInitializationData(initData, &playreadyInitData)) {
+
+                    DRM_Prdy_Error_e dr = DRM_Prdy_fail;
+                    dr = DRM_Prdy_Content_SetProperty(
+                            m_prdyHandle,
+                            DRM_Prdy_contentSetProperty_eAutoDetectHeader,
+                            reinterpret_cast<const uint8_t *>(playreadyInitData.data()),
+                            playreadyInitData.size());
+
+                    if (dr == DRM_Prdy_ok) {
+                        m_eKeyState = KEY_INIT;
+                        printf("Playready Session Initialized \n");
+                    }
                 }
-
-                dr = DRM_Prdy_Content_SetProperty(m_prdyHandle,
-                                                  DRM_Prdy_contentSetProperty_eAutoDetectHeader,
-                                                  reinterpret_cast<const uint8_t *>(playreadyInitData.data()),
-                                                  playreadyInitData.size());
-
             }
-
         }
     }
 }
 
-MediaKeySession::~MediaKeySession(void) {
+MediaKeySession::~MediaKeySession(void)
+{
+
+    if (m_oDecryptContext.pDecrypt != nullptr)
+        NEXUS_Memory_Free(m_oDecryptContext.pDecrypt);
 
     if (m_prdyHandle != nullptr)
         DRM_Prdy_Uninitialize(m_prdyHandle);
@@ -225,30 +211,42 @@ MediaKeySession::~MediaKeySession(void) {
     if (m_DecryptBuffer != nullptr)
         NEXUS_Memory_Free(m_DecryptBuffer);
 
-    delete m_rgchSessionID;
+    delete [] m_rgchSessionID;
+
     m_eKeyState = KEY_CLOSED;
+
+    printf("Destructing PlayReady Session [%p]\n", this);
 }
 
-const char *MediaKeySession::GetSessionId(void) const {
+const char *MediaKeySession::GetSessionId(void) const
+{
 
     return m_rgchSessionID;
 }
 
-const char *MediaKeySession::GetKeySystem(void) const {
+const char *MediaKeySession::GetKeySystem(void) const
+{
+
     return NYI_KEYSYSTEM; // FIXME : replace with keysystem and test.
 }
 
-void MediaKeySession::Run(const IMediaKeySessionCallback *f_piMediaKeySessionCallback) {
-    if (f_piMediaKeySessionCallback)
+void MediaKeySession::Run(const IMediaKeySessionCallback *f_piMediaKeySessionCallback)
+{
+
+    if (f_piMediaKeySessionCallback) {
+
         m_piCallback = const_cast<IMediaKeySessionCallback *>(f_piMediaKeySessionCallback);
 
-    // FIXME : Custom data is not set;needs recheck.
-    playreadyGenerateKeyRequest();
+        // FIXME : Custom data is not set;needs recheck.
+        playreadyGenerateKeyRequest();
+    } else {
+
+        m_piCallback = nullptr;
+    }
 }
 
-
-bool MediaKeySession::playreadyGenerateKeyRequest() {
-    
+bool MediaKeySession::playreadyGenerateKeyRequest()
+{
 
     DRM_Prdy_Error_e dr = DRM_Prdy_fail;
     unsigned int cbChallenge = 0;
@@ -257,91 +255,113 @@ bool MediaKeySession::playreadyGenerateKeyRequest() {
     char *pchSilentURL = nullptr;
 
     // The current state MUST be KEY_INIT otherwise error out.
-    if (m_eKeyState == KEY_INIT) {
+    if ((m_eKeyState != KEY_INIT) || (m_prdyHandle == nullptr)) {
 
-        DRM_Prdy_Reader_Bind(m_prdyHandle, &m_oDecryptContext);
+        m_eKeyState = KEY_ERROR;
 
+        printf("playreadyGenerateKeyRequest FAIL! \n");
+        return false;
+    }
+
+    dr = DRM_Prdy_Reader_Bind(m_prdyHandle, &m_oDecryptContext);
+    if (dr != DRM_Prdy_fail) {
         // Try to figure out the size of the license acquisition
         // challenge to be returned.
-        if ((dr = DRM_Prdy_Get_Buffer_Size(
+        dr = DRM_Prdy_Get_Buffer_Size(
                 m_prdyHandle,
                 DRM_Prdy_getBuffer_licenseAcq_challenge,
                 nullptr, //customData.isEmpty() ? nullptr : reinterpret_cast<const uint8_t *>(customData.utf8().data()),
                 0, //customData.length(),
                 &cchSilentURL,
-                &cbChallenge)) == DRM_Prdy_ok) {
+                &cbChallenge);
+
+        if (dr == DRM_Prdy_ok) {
 
             if (cchSilentURL > 0) {
+
                 pchSilentURL = reinterpret_cast<char *>(::malloc(cchSilentURL + 1));
-                memset(pchSilentURL, 0, sizeof(cchSilentURL + 1));
+                ::memset(pchSilentURL, 0, sizeof(cchSilentURL + 1));
             }
 
             // Allocate buffer that is sufficient to store the license acquisition
             // challenge.
             if (cbChallenge > 0) {
+
                 pbChallenge = reinterpret_cast<char *>(::malloc(cbChallenge + 1));
-                memset(pbChallenge, 0, sizeof(cbChallenge + 1));
+                ::memset(pbChallenge, 0, sizeof(cbChallenge + 1));
             }
 
-            // Supply a buffer to receive the license acquisition challenge.
-            if ((dr = DRM_Prdy_LicenseAcq_GenerateChallenge(
+            dr = DRM_Prdy_LicenseAcq_GenerateChallenge(
                     m_prdyHandle,
                     nullptr, //customData.isEmpty() ? nullptr : reinterpret_cast<const char *>(customData.utf8().data()),
                     0, //customData.length(),
                     pchSilentURL,
                     &cchSilentURL,
                     pbChallenge,
-                    &cbChallenge)) == DRM_Prdy_ok) {
+                    &cbChallenge);
 
-			  m_eKeyState = KEY_PENDING;
-			  m_piCallback->OnKeyMessage((const uint8_t *) pbChallenge, cbChallenge, (char *)pchSilentURL); 
-			  return true;
+            bool challengeResult = false;
+            if (dr == DRM_Prdy_ok) {
 
-		}
+                m_eKeyState = KEY_PENDING;
+
+                if (m_piCallback)
+                    m_piCallback->OnKeyMessage((const uint8_t *) pbChallenge, cbChallenge, (char *) pchSilentURL);
+
+                challengeResult = true;
+            } else {
+
+                m_eKeyState = KEY_ERROR;
+            }
+
+            if (pbChallenge)
+                free(pbChallenge);
+            if (pchSilentURL)
+                free(pchSilentURL);
+            return challengeResult;
         }
     }
 
     m_eKeyState = KEY_ERROR;
-    free(pbChallenge);
-    free(pchSilentURL);
     printf("playreadyGenerateKeyRequest FAIL! \n");
 
     return false;
 }
 
-CDMi_RESULT MediaKeySession::Load(void) {
+CDMi_RESULT MediaKeySession::Load(void)
+{
+
   return CDMi_S_FALSE;
 }
 
-void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_cbKeyMessageResponse) {
+void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_cbKeyMessageResponse)
+{
 
-    DRM_Prdy_Error_e dr = DRM_Prdy_fail;
     DRM_Prdy_License_Response_t oLicenseResponse = { DRM_Prdy_License_Protocol_Type_eUnknownProtocol, 0 };
     DRM_Prdy_DecryptSettings_t pDecryptSettings;
 
-    if ( (m_pbKeyMessageResponse != nullptr) && (m_cbKeyMessageResponse > 0) && (m_eKeyState == KEY_PENDING) &&
-         ( (dr = DRM_Prdy_LicenseAcq_ProcessResponse(
+    // The current state MUST be KEY_PENDING otherwise error out.
+    if ( (m_pbKeyMessageResponse != nullptr)
+         && (m_cbKeyMessageResponse > 0)
+         && (m_eKeyState == KEY_PENDING)
+         && (DRM_Prdy_LicenseAcq_ProcessResponse(
                  m_prdyHandle,
                  reinterpret_cast<const char *>(m_pbKeyMessageResponse),
                  m_cbKeyMessageResponse,
-                 &oLicenseResponse)) == DRM_Prdy_ok) &&
-         ( (dr = DRM_Prdy_Reader_Bind(
-                 m_prdyHandle,
-                 &m_oDecryptContext)) == DRM_Prdy_ok) ) {
+                 &oLicenseResponse) == DRM_Prdy_ok) ) {
 
-        printf("playreadyProcessKey did everything, DR result: %d \n", dr);
+        if (!m_fCommit) {
+            DRM_Prdy_Reader_Bind(m_prdyHandle, &m_oDecryptContext);
+        }
+
+        printf("playreadyProcessKey did everything\n");
         m_eKeyState = KEY_READY;
-    }
 
-    if (dr == DRM_Prdy_ok) {
+        if (m_piCallback)
+            m_piCallback->OnKeyStatusUpdate("KeyUsable");
 
-  	printf("Key processed, now ready for content decryption\n");
-        if (m_eKeyState == KEY_READY) {
-    		m_piCallback->OnKeyStatusUpdate("KeyUsable");
-		return;
-  	}
-
-
+        printf("Key processed, now ready for content decryption\n");
+        return;
     }
 
     printf("Playready failed processing license response\n");
@@ -349,108 +369,129 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
     return;
 }
 
-CDMi_RESULT MediaKeySession::Remove(void) {
-  return CDMi_S_FALSE;
+CDMi_RESULT MediaKeySession::Remove(void)
+{
+
+    return CDMi_S_FALSE;
 }
 
 CDMi_RESULT MediaKeySession::Close(void) {}
 
 CDMi_RESULT MediaKeySession::Decrypt(
-    const uint8_t *f_pbSessionKey,
-    uint32_t f_cbSessionKey,
-    const uint32_t *f_pdwSubSampleMapping,
-    uint32_t f_cdwSubSampleMapping,
-    const uint8_t *f_pbIV,
-    uint32_t f_cbIV,
-    const uint8_t *payloadData,
-    uint32_t payloadDataSize,
-    uint32_t *f_pcbOpaqueClearContent,
-    uint8_t **f_ppbOpaqueClearContent) {
+        const uint8_t *f_pbSessionKey,
+        uint32_t f_cbSessionKey,
+        const uint32_t *f_pdwSubSampleMapping,
+        uint32_t f_cdwSubSampleMapping,
+        const uint8_t *f_pbIV,
+        uint32_t f_cbIV,
+        const uint8_t *payloadData,
+        uint32_t payloadDataSize,
+        uint32_t *f_pcbOpaqueClearContent,
+        uint8_t **f_ppbOpaqueClearContent)
+{
 
     DRM_Prdy_Error_e dr = DRM_Prdy_fail;
     DRM_Prdy_AES_CTR_Info_t oAESContext;
 
-    if (sizeof(oAESContext.qwInitializationVector) >= f_cbIV) {
-        uint8_t* newBuffer = nullptr;
-        const uint8_t* source = reinterpret_cast<const uint8_t*>(f_pbIV);
-        uint8_t* destination = reinterpret_cast<uint8_t*>(&oAESContext.qwInitializationVector);
+    if (sizeof(oAESContext.qwInitializationVector) < f_cbIV) {
 
-        for (uint32_t index = 0; index < (f_cbIV / 2); index++) {
-            destination[index] = source[f_cbIV - index - 1];
-            destination[f_cbIV - index - 1] = source[index];
-        }
-
-        oAESContext.qwBlockOffset = 0;
-        oAESContext.bByteOffset = 0;
-
-        if (payloadDataSize >  m_DecryptBufferSize) {
-            int rc = NEXUS_Memory_Allocate(payloadDataSize, nullptr, reinterpret_cast<void**>(&newBuffer));
-            if( rc == 0 ) {
-                ::memcpy(newBuffer, payloadData, payloadDataSize);
-            }
-        }
-
-        _decoderLock.Lock();
-
-        if (newBuffer != nullptr) {
-
-            m_DecryptBufferSize = payloadDataSize;
-            NEXUS_Memory_Free(m_DecryptBuffer);
-            m_DecryptBuffer = newBuffer;
-            printf("m_DecryptBufferSize to small, use larger buffer. newSize: %d \n", payloadDataSize);
-        } else {
-            memcpy(m_DecryptBuffer, payloadData, payloadDataSize);
-        }
-
-        if ( (dr = DRM_Prdy_Reader_Decrypt(&m_oDecryptContext, &oAESContext, m_DecryptBuffer, payloadDataSize)) == DRM_Prdy_ok) {
-
-            if ( (!m_fCommit) && ((dr = DRM_Prdy_Reader_Commit(m_prdyHandle)) == DRM_Prdy_ok) )
-                m_fCommit = true;
-
-            // Return clear content.
-            *f_pcbOpaqueClearContent = payloadDataSize;
-            *f_ppbOpaqueClearContent = (uint8_t *) m_DecryptBuffer;
-
-            _decoderLock.Unlock();
-
-            return CDMi_SUCCESS;
-        }
-
-        _decoderLock.Unlock();
-    } else {
         printf("oAESContext.qwInitializationVector smaller than ivSize. %d %d \n", sizeof(oAESContext.qwInitializationVector), f_cbIV);
+        return CDMi_S_FALSE;
     }
 
+    const uint8_t* source = reinterpret_cast<const uint8_t*>(f_pbIV);
+    uint8_t* destination = reinterpret_cast<uint8_t*>(&oAESContext.qwInitializationVector);
+
+    for (uint32_t index = 0; index < (f_cbIV / 2); index++) {
+
+        destination[index] = source[f_cbIV - index - 1];
+        destination[f_cbIV - index - 1] = source[index];
+    }
+
+    oAESContext.qwBlockOffset = 0;
+    oAESContext.bByteOffset = 0;
+
+    if (payloadDataSize >  m_DecryptBufferSize) {
+
+        uint8_t* newBuffer = nullptr;
+        int rc = NEXUS_Memory_Allocate(payloadDataSize, nullptr, reinterpret_cast<void**>(&newBuffer));
+        if( rc == 0 ) {
+
+            ::memcpy(newBuffer, payloadData, payloadDataSize);
+
+            _decoderLock.Lock();
+            NEXUS_Memory_Free(m_DecryptBuffer);
+            m_DecryptBuffer = newBuffer;
+            m_DecryptBufferSize = payloadDataSize;
+            _decoderLock.Unlock();
+
+            printf("m_DecryptBufferSize to small, use larger buffer. newSize: %d \n", payloadDataSize);
+        } else {
+
+            printf("m_DecryptBufferSize to small, use larger buffer. could not allocate memory %d \n", payloadDataSize);
+            return CDMi_S_FALSE;
+        }
+    }
+
+    _decoderLock.Lock();
+    memcpy(m_DecryptBuffer, payloadData, payloadDataSize);
+
+    if ( DRM_Prdy_Reader_Decrypt(&m_oDecryptContext, &oAESContext, m_DecryptBuffer, payloadDataSize) == DRM_Prdy_ok ) {
+
+        if ( (!m_fCommit) && ( DRM_Prdy_Reader_Commit(m_prdyHandle) == DRM_Prdy_ok ) )
+            m_fCommit = true;
+
+        // Return clear content.
+        *f_pcbOpaqueClearContent = payloadDataSize;
+        *f_ppbOpaqueClearContent = static_cast<uint8_t *>(m_DecryptBuffer);
+
+        _decoderLock.Unlock();
+        return CDMi_SUCCESS;
+    }
+
+    _decoderLock.Unlock();
     return CDMi_S_FALSE;
 }
 
 CDMi_RESULT MediaKeySession::ReleaseClearContent(
-    const uint8_t *f_pbSessionKey,
-    uint32_t f_cbSessionKey,
-    const uint32_t  f_cbClearContentOpaque,
-    uint8_t  *f_pbClearContentOpaque ) {
+        const uint8_t *f_pbSessionKey,
+        uint32_t f_cbSessionKey,
+        const uint32_t  f_cbClearContentOpaque,
+        uint8_t  *f_pbClearContentOpaque )
+{
 
   return CDMi_SUCCESS;
-
 }
 
-bool MediaKeySession::generateSessionId(uint8_t *pRandomBytes)
+bool MediaKeySession::generateSessionId()
 {
-    NEXUS_RandomNumberGenerateSettings settings;
-    NEXUS_RandomNumberOutput rngOutput;
 
-    NEXUS_RandomNumber_GetDefaultGenerateSettings(&settings);
-    settings.randomNumberSize = SESSION_ID_SIZE;
+    uint8_t sessionID[SESSION_ID_SIZE];
+    uint32_t B64SessionIDSize = DRM_Prdy_Cch_Base64_Equiv( SESSION_ID_SIZE );
+    uint16_t B64SessionID[B64SessionIDSize];
+    DRM_Prdy_Error_e dr = DRM_Prdy_fail;
 
-    if( (NEXUS_RandomNumber_Generate(&settings, &rngOutput) != 0) || (rngOutput.size != SESSION_ID_SIZE) )
-    {
-        printf("%s - Error generating '%u' random bytes (only '%u' bytes returned) ", __FUNCTION__, SESSION_ID_SIZE, rngOutput.size);
-        return false;
+    // Take this pointer as session identifier
+    ::memcpy(sessionID, reinterpret_cast<uint8_t*>(this), SESSION_ID_SIZE);
+
+    if(B64SessionID != NULL) {
+
+        // Base64 encoded version of session identifier
+        dr = DRM_Prdy_B64_EncodeW(sessionID, SESSION_ID_SIZE, B64SessionID, &B64SessionIDSize);
+        if (dr != DRM_Prdy_ok) {
+
+            printf("DRM_Prdy_B64_EncodeW failed = 0x%x\n", dr);
+            return false;
+        }
+
+        // Copy encoded session identifier as char*
+        std::copy(B64SessionID, B64SessionID + (sizeof(char)*SESSION_ID_SIZE), m_rgchSessionID);
+
+        printf("Session ID generated: %s\n", m_rgchSessionID);
+        return true;
     }
 
-    ::memcpy(pRandomBytes, rngOutput.buffer, SESSION_ID_SIZE);
-
-    return true;
+    return false;
 }
 
 }  // namespace CDMi

@@ -92,7 +92,7 @@ public:
         uint8_t  *f_pbClearContentOpaque );
 
 private:
-    bool generateSessionId(uint8_t *pRandomBytes);
+    bool generateSessionId();
 
 private:
     DRM_Prdy_Handle_t m_prdyHandle;
