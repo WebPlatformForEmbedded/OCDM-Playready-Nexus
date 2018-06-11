@@ -358,7 +358,7 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
         m_eKeyState = KEY_READY;
 
         if (m_piCallback)
-            m_piCallback->OnKeyStatusUpdate("KeyUsable");
+            m_piCallback->OnKeyStatusUpdate("KeyUsable", nullptr, 0);
 
         printf("Key processed, now ready for content decryption\n");
         return;
