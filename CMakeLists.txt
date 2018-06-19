@@ -40,5 +40,11 @@ target_link_libraries(${DRM_PLUGIN_NAME} ${DRM_PLUGIN_LIBS})
 set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES SUFFIX ".drm")
 set_target_properties(${DRM_PLUGIN_NAME} PROPERTIES PREFIX "")
 
+#TODO: this should come from platform_app.inc
+target_compile_definitions(${DRM_PLUGIN_NAME}
+        PRIVATE
+            "BSTD_CPU_ENDIAN=BSTD_ENDIAN_LITTLE")
+
+
 install(TARGETS ${DRM_PLUGIN_NAME} DESTINATION ${CMAKE_INSTALL_PREFIX}/share/WPEFramework/OCDM)
 
