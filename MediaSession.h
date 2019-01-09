@@ -20,6 +20,11 @@
 #include "cdmi.h"
 #include <core/core.h>
 
+#include <refsw/nexus_config.h>
+#include <refsw/nxclient.h>
+
+#include <refsw/nexus_platform.h>
+
 #include <refsw/nexus_memory.h>
 #include <refsw/nexus_random_number.h>
 #include <refsw/drm_prdy.h>

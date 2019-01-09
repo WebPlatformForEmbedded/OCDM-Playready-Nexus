@@ -27,6 +27,15 @@ private:
 
 public:
     PlayReady() {
+        NxClient_JoinSettings joinSettings;
+        NEXUS_Error rc;
+
+        NxClient_GetDefaultJoinSettings(&joinSettings);
+        snprintf(joinSettings.name, NXCLIENT_MAX_NAME, "playready");
+        rc = NxClient_Join(&joinSettings);
+        if (rc) {
+            printf("Couldnt join nxserver\n");
+        }
     }
 
     ~PlayReady(void) {

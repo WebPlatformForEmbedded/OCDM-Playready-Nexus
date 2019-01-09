@@ -9,7 +9,7 @@
 # So here we purposely left one underscore away
 
 find_package(PkgConfig)
-pkg_check_modules(PC_WPEFRAMEWORK WPEFramework)
+pkg_check_modules(PC_WPEFRAMEWORK WPEFrameworkCore)
 
 if(PC_WPEFRAMEWORK_FOUND)
     if(WPEFRAMEWORK_FIND_VERSION AND PC_WPEFRAMEWORK_VERSION)

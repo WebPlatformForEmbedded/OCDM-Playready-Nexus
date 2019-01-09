@@ -180,19 +180,20 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
             int rc = NEXUS_Memory_Allocate(m_DecryptBufferSize, nullptr, reinterpret_cast<void **>(&m_DecryptBuffer));
             if (rc == 0) {
 
-                if (parsePlayreadyInitializationData(initData, &playreadyInitData)) {
+                if (!parsePlayreadyInitializationData(initData, &playreadyInitData)) {
+                    playreadyInitData = initData;
+                }
 
-                    DRM_Prdy_Error_e dr = DRM_Prdy_fail;
-                    dr = DRM_Prdy_Content_SetProperty(
-                            m_prdyHandle,
-                            DRM_Prdy_contentSetProperty_eAutoDetectHeader,
-                            reinterpret_cast<const uint8_t *>(playreadyInitData.data()),
-                            playreadyInitData.size());
+                DRM_Prdy_Error_e dr = DRM_Prdy_fail;
+                dr = DRM_Prdy_Content_SetProperty(
+                        m_prdyHandle,
+                        DRM_Prdy_contentSetProperty_eAutoDetectHeader,
+                        reinterpret_cast<const uint8_t *>(playreadyInitData.data()),
+                        playreadyInitData.size());
 
-                    if (dr == DRM_Prdy_ok) {
-                        m_eKeyState = KEY_INIT;
-                        printf("Playready Session Initialized \n");
-                    }
+                if (dr == DRM_Prdy_ok) {
+                    m_eKeyState = KEY_INIT;
+                    printf("Playready Session Initialized \n");
                 }
             }
         }
@@ -203,7 +204,7 @@ MediaKeySession::~MediaKeySession(void)
 {
 
     if (m_oDecryptContext.pDecrypt != nullptr)
-        NEXUS_Memory_Free(m_oDecryptContext.pDecrypt);
+        DRM_Prdy_Reader_Close(&m_oDecryptContext);
 
     if (m_prdyHandle != nullptr)
         DRM_Prdy_Uninitialize(m_prdyHandle);
@@ -361,11 +362,14 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
             m_piCallback->OnKeyStatusUpdate("KeyUsable", nullptr, 0);
 
         printf("Key processed, now ready for content decryption\n");
-        return;
+    } else {
+        printf("Playready failed processing license response\n");
+        m_eKeyState = KEY_ERROR;
+
+        if (m_piCallback)
+            m_piCallback->OnKeyStatusUpdate("KeyError", nullptr, 0);
     }
 
-    printf("Playready failed processing license response\n");
-    m_eKeyState = KEY_ERROR;
     return;
 }
 
@@ -375,7 +379,11 @@ CDMi_RESULT MediaKeySession::Remove(void)
     return CDMi_S_FALSE;
 }
 
-CDMi_RESULT MediaKeySession::Close(void) {}
+CDMi_RESULT MediaKeySession::Close(void)
+{
+
+    return CDMi_S_FALSE;
+}
 
 CDMi_RESULT MediaKeySession::Decrypt(
         const uint8_t *f_pbSessionKey,
