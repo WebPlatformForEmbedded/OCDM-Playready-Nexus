@@ -147,7 +147,7 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
     return false;
 }
 
-MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData)
+MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData)
         : m_prdyHandle(nullptr)
         , m_oDecryptContext()
         , m_oDecryptContextKey()
@@ -156,6 +156,7 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
         , m_eKeyState(KEY_ERROR)
         , m_fCommit(false)
         , m_piCallback(nullptr)
+        , m_customData(reinterpret_cast<const char*>(f_pbCDMData), f_cbCDMData)
         , _decoderLock() {
 
     DRM_Prdy_Init_t settings;
@@ -238,7 +239,6 @@ void MediaKeySession::Run(const IMediaKeySessionCallback *f_piMediaKeySessionCal
 
         m_piCallback = const_cast<IMediaKeySessionCallback *>(f_piMediaKeySessionCallback);
 
-        // FIXME : Custom data is not set;needs recheck.
         playreadyGenerateKeyRequest();
     } else {
 
@@ -261,6 +261,8 @@ bool MediaKeySession::playreadyGenerateKeyRequest()
         m_eKeyState = KEY_ERROR;
 
         printf("playreadyGenerateKeyRequest FAIL! \n");
+        if (m_piCallback)
+            m_piCallback->OnKeyMessage((const uint8_t *) "", 0, (char*) "");
         return false;
     }
 
@@ -271,8 +273,8 @@ bool MediaKeySession::playreadyGenerateKeyRequest()
         dr = DRM_Prdy_Get_Buffer_Size(
                 m_prdyHandle,
                 DRM_Prdy_getBuffer_licenseAcq_challenge,
-                nullptr, //customData.isEmpty() ? nullptr : reinterpret_cast<const uint8_t *>(customData.utf8().data()),
-                0, //customData.length(),
+                m_customData.empty() ? nullptr : reinterpret_cast<const uint8_t *>(m_customData.c_str()),
+                m_customData.length(),
                 &cchSilentURL,
                 &cbChallenge);
 
@@ -294,8 +296,8 @@ bool MediaKeySession::playreadyGenerateKeyRequest()
 
             dr = DRM_Prdy_LicenseAcq_GenerateChallenge(
                     m_prdyHandle,
-                    nullptr, //customData.isEmpty() ? nullptr : reinterpret_cast<const char *>(customData.utf8().data()),
-                    0, //customData.length(),
+                    m_customData.empty() ? nullptr : m_customData.c_str(),
+                    m_customData.length(),
                     pchSilentURL,
                     &cchSilentURL,
                     pbChallenge,
@@ -313,6 +315,8 @@ bool MediaKeySession::playreadyGenerateKeyRequest()
             } else {
 
                 m_eKeyState = KEY_ERROR;
+                if (m_piCallback)
+                    m_piCallback->OnKeyMessage((const uint8_t *) "", 0, (char*) "");
             }
 
             if (pbChallenge)
@@ -325,6 +329,8 @@ bool MediaKeySession::playreadyGenerateKeyRequest()
 
     m_eKeyState = KEY_ERROR;
     printf("playreadyGenerateKeyRequest FAIL! \n");
+    if (m_piCallback)
+        m_piCallback->OnKeyMessage((const uint8_t *) "", 0, (char*) "");
 
     return false;
 }
