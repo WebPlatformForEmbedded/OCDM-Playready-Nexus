@@ -57,7 +57,7 @@ private:
 public:
     //static const std::vector<std::string> m_mimeTypes;
 
-    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData);
+    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData);
     ~MediaKeySession();
     bool playreadyGenerateKeyRequest();
     bool ready() const { return m_eKeyState == KEY_READY; }
@@ -112,6 +112,7 @@ private:
     KeyState m_eKeyState;
     IMediaKeySessionCallback *m_piCallback;
     const uint8_t SESSION_ID_SIZE = 16;
+    std::string m_customData;
 
    WPEFramework::Core::CriticalSection _decoderLock;
 
