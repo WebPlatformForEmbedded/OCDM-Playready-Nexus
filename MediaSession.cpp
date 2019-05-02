@@ -481,10 +481,6 @@ CDMi_RESULT MediaKeySession::ReleaseClearContent(
   return CDMi_SUCCESS;
 }
 
-void MediaKeySession::UninitializeContext()
-{
-}
-
 bool MediaKeySession::generateSessionId()
 {
 
