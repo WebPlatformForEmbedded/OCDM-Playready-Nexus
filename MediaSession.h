@@ -54,10 +54,17 @@ private:
         LicenseRelease = 2,
         IndividualizationRequest = 3
     };
+
+    enum LicenseType {
+        Temporary = 0,
+        PersistentUsageRecord,
+        PersistentLicense
+    };
+
 public:
     //static const std::vector<std::string> m_mimeTypes;
 
-    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData);
+    MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, int32_t licenseType);
     ~MediaKeySession();
     bool playreadyGenerateKeyRequest();
     bool ready() const { return m_eKeyState == KEY_READY; }
@@ -114,6 +121,7 @@ private:
     IMediaKeySessionCallback *m_piCallback;
     const uint8_t SESSION_ID_SIZE = 16;
     std::string m_customData;
+    int32_t m_licenseType;
 
    WPEFramework::Core::CriticalSection _decoderLock;
 

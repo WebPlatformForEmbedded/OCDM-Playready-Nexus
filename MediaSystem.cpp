@@ -51,7 +51,7 @@ public:
         uint32_t f_cbCDMData, 
         IMediaKeySession **f_ppiMediaKeySession) {
 
-        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData);
+        *f_ppiMediaKeySession = new CDMi::MediaKeySession(f_pbInitData, f_cbInitData, f_pbCDMData, f_cbCDMData, licenseType);
 
         return CDMi_SUCCESS; 
     }

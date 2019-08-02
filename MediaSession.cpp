@@ -147,7 +147,7 @@ bool parsePlayreadyInitializationData(const std::string& initData, std::string* 
     return false;
 }
 
-MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData)
+MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitData, const uint8_t *f_pbCDMData, uint32_t f_cbCDMData, int32_t licenseType)
         : m_prdyHandle(nullptr)
         , m_oDecryptContext()
         , m_oDecryptContextKey()
@@ -157,6 +157,7 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
         , m_fCommit(false)
         , m_piCallback(nullptr)
         , m_customData(reinterpret_cast<const char*>(f_pbCDMData), f_cbCDMData)
+        , m_licenseType(licenseType)
         , _decoderLock() {
 
     DRM_Prdy_Init_t settings;
@@ -168,6 +169,10 @@ MediaKeySession::MediaKeySession(const uint8_t *f_pbInitData, uint32_t f_cbInitD
 
     DRM_Prdy_GetDefaultParamSettings(&settings);
     settings.hdsFileName = reinterpret_cast<char *>(::strdup("/tmp/wpe.hds"));
+
+    if (m_licenseType == Temporary) {
+        ::remove(settings.hdsFileName);
+    }
 
     m_rgchSessionID = new char[SESSION_ID_SIZE + 1]();
 
@@ -381,8 +386,9 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
 
 CDMi_RESULT MediaKeySession::Remove(void)
 {
+    DRM_Prdy_Cleanup_LicenseStores(m_prdyHandle);
 
-    return CDMi_S_FALSE;
+    return CDMi_SUCCESS;
 }
 
 CDMi_RESULT MediaKeySession::Close(void)
