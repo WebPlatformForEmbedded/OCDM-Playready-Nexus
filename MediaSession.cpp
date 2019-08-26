@@ -376,6 +376,9 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
             m_piCallback->OnKeyStatusUpdate("KeyError", nullptr, 0);
     }
 
+    if (m_piCallback)
+        m_piCallback->OnKeyStatusesUpdated();
+
     return;
 }
 
