@@ -267,7 +267,7 @@ bool MediaKeySession::playreadyGenerateKeyRequest()
 
         printf("playreadyGenerateKeyRequest FAIL! \n");
         if (m_piCallback)
-            m_piCallback->OnKeyMessage((const uint8_t *) "", 0, (char*) "");
+            m_piCallback->OnError(0, CDMi_S_FALSE, "KeyError");
         return false;
     }
 
@@ -321,7 +321,7 @@ bool MediaKeySession::playreadyGenerateKeyRequest()
 
                 m_eKeyState = KEY_ERROR;
                 if (m_piCallback)
-                    m_piCallback->OnKeyMessage((const uint8_t *) "", 0, (char*) "");
+                    m_piCallback->OnError(0, CDMi_S_FALSE, "KeyError");
             }
 
             if (pbChallenge)
@@ -335,7 +335,7 @@ bool MediaKeySession::playreadyGenerateKeyRequest()
     m_eKeyState = KEY_ERROR;
     printf("playreadyGenerateKeyRequest FAIL! \n");
     if (m_piCallback)
-        m_piCallback->OnKeyMessage((const uint8_t *) "", 0, (char*) "");
+        m_piCallback->OnError(0, CDMi_S_FALSE, "KeyError");
 
     return false;
 }
@@ -369,20 +369,35 @@ void MediaKeySession::Update(const uint8_t *m_pbKeyMessageResponse, uint32_t  m_
         printf("playreadyProcessKey did everything\n");
         m_eKeyState = KEY_READY;
 
-        if (m_piCallback)
-            m_piCallback->OnKeyStatusUpdate("KeyUsable", nullptr, 0);
+        if ((m_piCallback != nullptr) && (m_eKeyState == KEY_READY) && (oLicenseResponse.cAcks > 0)) {
+            for (uint8_t i = 0; i < oLicenseResponse.cAcks; ++i) {
+                if (oLicenseResponse.rgoAcks[i].dwResult >= 0) {
+                    // Make MS endianness to Cenc endianness.
+                    //ToggleKeyIdFormat(DRM_ID_SIZE, oLicenseResponse.m_rgoAcks[i].oKID.rgb);
 
-        printf("Key processed, now ready for content decryption\n");
-    } else {
-        printf("Playready failed processing license response\n");
-        m_eKeyState = KEY_ERROR;
-
-        if (m_piCallback)
-            m_piCallback->OnKeyStatusUpdate("KeyError", nullptr, 0);
+                    m_piCallback->OnKeyStatusUpdate("KeyUsable",
+                       reinterpret_cast<uint8_t*>(&(oLicenseResponse.rgoAcks[i].oKID)),
+                       sizeof(DRM_Prdy_guid_t));
+                }
+            }
+            m_piCallback->OnKeyStatusesUpdated();
+            printf("Key processed, now ready for content decryption\n");
+            return;
+        }
     }
+    printf("Playready failed processing license response\n");
+    m_eKeyState = KEY_ERROR;
 
-    if (m_piCallback)
+    if (m_piCallback != nullptr) {
+        for (uint8_t i = 0; i < oLicenseResponse.cAcks; ++i) {
+            if (oLicenseResponse.rgoAcks[i].dwResult >= 0) {
+                m_piCallback->OnKeyStatusUpdate("KeyError",
+                   reinterpret_cast<uint8_t*>(&(oLicenseResponse.rgoAcks[i].oKID)),
+                   sizeof(DRM_Prdy_guid_t));
+            }
+        }
         m_piCallback->OnKeyStatusesUpdated();
+    }
 
     return;
 }
